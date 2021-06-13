@@ -1,5 +1,6 @@
 # FreeQuant 
 [![forthebadge](https://forthebadge.com/images/badges/made-with-javascript.svg)](https://forthebadge.com)
+
 Program to optimize and receive valuable information about your strategy. Eventually will be used as the framework for a live trading bot. Just a cute little summer project.
 
 ## Features
