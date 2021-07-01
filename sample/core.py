@@ -8,8 +8,8 @@ import time
 import sys
 import math
 
-
 import backtrader as bt
+from backtrader import position
 import backtrader.feeds as btfeeds
 import backtrader.indicators as btind
 import backtrader.analyzers as btanalyzers
@@ -61,65 +61,67 @@ class MyStrategy(bt.Strategy):
         williams = btind.WilliamsR(period = self.params.period)
         self.overline = btind.CrossUp(williams, -20, plot=True)  
         self.belowline = btind.CrossDown(williams, -80, plot =True)
-        # self.buysell = btind.CrossOver(williams, -50.0, plot =True)
+        # self.buysell = btind.CrossOver(williams, -50.0, plot=True)
 
     #strategy entry/exit rules and money management
     def next(self):
 
-        abovesma = self.dataclose > self.sma[0]
+        self.abovesma = self.dataclose > self.sma[0]
         # self.log('DrawDown: %.2f' % self.stats.drawdown.drawdown[-1])
         # self.log('MaxDrawDown: %.2f' % self.stats.drawdown.maxdrawdown[-1])
 
         #Buy and Sell strategy conditiions
-        self.buy_condition = abovesma and self.overline
-        self.sell_condition = (not abovesma) and self.belowline
+        self.buy_condition = self.overline and self.abovesma
+        self.sell_condition = self.belowline and self.abovesma
 
-        # if self.order:
-        #     self.order = None
+        if self.order:
+            return
+
         #not in a position
-        # if not self.position:
+        if not self.position:
 
-        if self.buy_condition:
-            self.close()
+            if self.buy_condition:
+                self.close()
 
-            sdistb = self.atr[0] * self.params.atrsl
-            self.sstoplevelb = self.data.close[0] - sdistb
+                self.sdistb = self.atr[0] * self.params.atrsl
+                self.sstoplevelb = self.data.close[0] - self.sdistb
 
-            pdistb = self.atr[0] * self.params.atrtp
-            self.ptakelevelb = self.data.close[0] + pdistb
+                self.pdistb = self.atr[0] * self.params.atrtp
+                self.ptakelevelb = self.data.close[0] + self.pdistb
 
-            # self.log('BUY CREATE, %.2f' % self.data.close[0])
-            self.mainb = self.buy(exectype=bt.Order.Market)
-            # self.sell(size=5, exectype=bt.Order.Limit, price=self.ptakelevelb)
-            # self.orderb = self.sell(size=10, exectype=bt.Order.StopTrail, trailamount=sdistb)
-            # self.static_stop = self.sell(size=10, exectype=bt.Order.Stop, price=self.sstoplevelb)
+                # self.log('BUY CREATE, %.2f' % self.data.close[0])
+                self.mainb = self.buy(exectype=bt.Order.Market)
+                self.sell(size=self.position.size * 0.5, exectype=bt.Order.Limit, price=self.ptakelevelb)
+                self.orderb = self.sell(exectype=bt.Order.Stop, price=self.sstoplevelb)
 
-        if self.sell_condition:
-            self.close()
+            if self.sell_condition:
+                self.close()
+                
+                self.sdists = self.atr[0] * self.params.atrsl
+                self.sstoplevels = self.data.close[0] + self.sdists
+
+                self.pdists = self.atr[0] * self.params.atrtp
+                self.ptakelevels = self.data.close[0] - self.pdists
+
+                # self.log('SELL CREATE, %.2f' % self.data.close[0])
+                self.mains = self.sell(exectype=bt.Order.Market)
+                self.buy(size=self.position.size * 0.5, exectype=bt.Order.Limit, price=self.ptakelevels)
+                self.orders = self.buy(exectype=bt.Order.Stop, price=self.sstoplevels)
             
-            sdists = self.atr[0] * self.params.atrsl
-            self.sstoplevels = self.data.close[0] + sdists
-
-            pdists = self.atr[0] * self.params.atrtp
-            self.ptakelevels = self.data.close[0] - pdists
-
-            # self.log('SELL CREATE, %.2f' % self.data.close[0])
-            self.mains = self.sell(exectype=bt.Order.Market)
-            # self.buy(size=5, exectype=bt.Order.Limit, price=self.ptakelevels)
-            # self.orders = self.buy(size=10, exectype=bt.Order.StopTrail, trailamount=sdists)
+        else:
             
-        # else:
-            
-        #     if self.position.size > 0:
-        #         ptakelevelb = self.ptakelevelb
-        #         if(self.datas[0].close > ptakelevelb):
-        #             self.cancel(self.orderb)
-        #             self.sell(size=5, exectype=bt.Order.StopTrail, trailpercent=self.params.trailperc)
-        #     elif self.dataclose < 0:
-        #         ptakelevels = self.ptakelevels
-        #         if(self.datas[0].close < ptakelevels):
-        #             self.cancel(self.orders)
-        #             self.buy(size=5, exectype=bt.Order.StopTrail, trailpercent=self.params.trailperc)
+            if self.position.size > 0:
+
+                if(self.datas[0].close > self.ptakelevelb):
+                    self.cancel(self.orderb)
+                    self.pstopb = max(self.ptakelevelb, self.datas[0].close - self.atr[0] * self.params.atrtp)
+                    self.trailb = self.sell(size=5, exectype=bt.Order.StopTrail, price=self.pstopb)
+            elif self.position.size < 0:
+
+                if(self.datas[0].close < self.ptakelevels):
+                    self.cancel(self.orders)
+                    self.pstops = min(self.ptakelevels, self.datas[0].close + self.atr[0] * self.params.atrsl)
+                    self.trails= self.buy(size=5, exectype=bt.Order.Stop, price=self.pstops)
 
 
 def runstrat():
@@ -142,7 +144,7 @@ def runstrat():
     c.addanalyzer(btanalyzers.SharpeRatio, _name='sharpe_ratio')
     c.addanalyzer(btanalyzers.DrawDown, _name='dd')
 
-    c.optstrategy(MyStrategy, period=range(10, 30), baseline=range(50, 60), atrperiod = 14, atrtp = range(1, 5), atrsl = range(1, 5))
+    c.optstrategy(MyStrategy, period=range(10, 70), baseline=range(50, 60), atrperiod = 14, atrtp = 1, atrsl = 1)
 
     c.addobserver(bt.observers.DrawDown)
     
@@ -154,7 +156,7 @@ def runstrat():
 
     final_results_list = []
     for run in optimized_runs:
-
+        c.plot()
         for c in run:
             
             PnL = round(c.broker.get_value() - 10000,2)
