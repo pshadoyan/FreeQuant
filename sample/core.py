@@ -37,6 +37,22 @@ class maxRiskSizer(bt.Sizer):
             size = math.floor((cash * self.p.risk) / data[0]) * -1
         return size
 
+class kcriterion(bt.Sizer):
+    params = (('risk', 0.03),)
+
+    def __init__(self):
+        if self.p.risk > 1 or self.p.risk < 0:
+            raise ValueError('The risk parameter is a percentage which must be'
+                'entered as a float. e.g. 0.5')
+    
+    def _getsizing(self, comminfo, cash, data, isbuy):
+        if isbuy == True:
+        
+        else:
+
+        return size
+
+
 class MyStrategy(bt.Strategy):
     params = (('period', 15),('baseline', 30),('atrperiod', 14),('atrtp', 1),('atrsl', 1), ('trailperc', 0.03))
 
