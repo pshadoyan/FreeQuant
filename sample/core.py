@@ -16,7 +16,7 @@ import backtrader.analyzers as btanalyzers
 import backtrader.feeds as btfeeds
 import backtrader.strategies as btstrats
 
-import pandas
+import pandas as pd
 
 class maxRiskSizer(bt.Sizer):
     '''
@@ -37,24 +37,11 @@ class maxRiskSizer(bt.Sizer):
             size = math.floor((cash * self.p.risk) / data[0]) * -1
         return size
 
-class kcriterion(bt.Sizer):
-    params = (('risk', 0.03),)
-
-    def __init__(self):
-        if self.p.risk > 1 or self.p.risk < 0:
-            raise ValueError('The risk parameter is a percentage which must be'
-                'entered as a float. e.g. 0.5')
-    
-    def _getsizing(self, comminfo, cash, data, isbuy):
-        if isbuy == True:
-        
-        else:
-
-        return size
-
 
 class MyStrategy(bt.Strategy):
     params = (('period', 15),('baseline', 30),('atrperiod', 14),('atrtp', 1),('atrsl', 1), ('trailperc', 0.03))
+
+
 
     def log(self, txt, dt=None):
         ''' Logging function fot this strategy'''
@@ -79,65 +66,85 @@ class MyStrategy(bt.Strategy):
         self.belowline = btind.CrossDown(williams, -80, plot =True)
         # self.buysell = btind.CrossOver(williams, -50.0, plot=True)
 
+        self.takep = []
+        self.closer = []
+
     #strategy entry/exit rules and money management
     def next(self):
-
-        self.abovesma = self.dataclose > self.sma[0]
+        
+        abovesma = self.dataclose > self.sma[0]
         # self.log('DrawDown: %.2f' % self.stats.drawdown.drawdown[-1])
         # self.log('MaxDrawDown: %.2f' % self.stats.drawdown.maxdrawdown[-1])
 
         #Buy and Sell strategy conditiions
-        self.buy_condition = self.overline and self.abovesma
-        self.sell_condition = self.belowline and self.abovesma
-
-        if self.order:
-            return
+        self.buy_condition = self.overline and abovesma
+        self.sell_condition = self.belowline and abovesma 
 
         #not in a position
         if not self.position:
 
+            x = 0
+
             if self.buy_condition:
+
                 self.close()
+                if(x > 0):
+                    self.takep.pop(0)
+                    self.closer.pop(0)
 
-                self.sdistb = self.atr[0] * self.params.atrsl
-                self.sstoplevelb = self.data.close[0] - self.sdistb
+                sdistb = self.atr[0] * self.params.atrsl
+                sstoplevelb = self.data.close[0] - sdistb
 
-                self.pdistb = self.atr[0] * self.params.atrtp
-                self.ptakelevelb = self.data.close[0] + self.pdistb
+                pdistb = self.atr[0] * self.params.atrtp
+                ptakelevelb = self.data.close[0] + pdistb
 
-                # self.log('BUY CREATE, %.2f' % self.data.close[0])
+                self.takep.append(ptakelevelb)
+                self.closer.append(self.data.close[0])
+
+
                 self.mainb = self.buy(exectype=bt.Order.Market)
-                self.sell(size=self.position.size * 0.5, exectype=bt.Order.Limit, price=self.ptakelevelb)
-                self.orderb = self.sell(exectype=bt.Order.Stop, price=self.sstoplevelb)
+                self.sell(size=self.position.size * 0.5, exectype=bt.Order.Limit, price=ptakelevelb)
+                self.orderb = self.sell(exectype=bt.Order.Stop, price=sstoplevelb)
+                # self.log('BUY CREATE, %.2f' % self.data.close[0])              
 
             if self.sell_condition:
+
                 self.close()
+                if(x > 0):
+                    self.takep.pop(0)
+                    self.closer.pop(0)
                 
-                self.sdists = self.atr[0] * self.params.atrsl
-                self.sstoplevels = self.data.close[0] + self.sdists
+                sdists = self.atr[0] * self.params.atrsl
+                sstoplevels = self.data.close[0] + sdists
 
-                self.pdists = self.atr[0] * self.params.atrtp
-                self.ptakelevels = self.data.close[0] - self.pdists
+                pdists = self.atr[0] * self.params.atrtp
+                ptakelevels = self.data.close[0] - pdists
 
-                # self.log('SELL CREATE, %.2f' % self.data.close[0])
+                self.takep.append(ptakelevels)
+                self.closer.append(self.data.close[0])
+
+
                 self.mains = self.sell(exectype=bt.Order.Market)
-                self.buy(size=self.position.size * 0.5, exectype=bt.Order.Limit, price=self.ptakelevels)
-                self.orders = self.buy(exectype=bt.Order.Stop, price=self.sstoplevels)
+                self.buy(size=self.position.size * 0.5, exectype=bt.Order.Limit, price=ptakelevels)
+                self.orders = self.buy(exectype=bt.Order.Stop, price=sstoplevels)
+                # self.log('SELL CREATE, %.2f' % self.data.close[0])          
+            x += 1
             
         else:
             
             if self.position.size > 0:
-
-                if(self.datas[0].close > self.ptakelevelb):
+                
+                if(self.datas[0].close > self.takep[0]):
                     self.cancel(self.orderb)
-                    self.pstopb = max(self.ptakelevelb, self.datas[0].close - self.atr[0] * self.params.atrtp)
-                    self.trailb = self.sell(size=5, exectype=bt.Order.StopTrail, price=self.pstopb)
+                    self.pstopb = max(self.closer[0], self.datas[0].close - self.atr[0] * self.params.atrtp)
+                    self.trailb = self.sell(size=self.position.size * 0.5, exectype=bt.Order.Stop, price=self.pstopb)
+
             elif self.position.size < 0:
 
-                if(self.datas[0].close < self.ptakelevels):
+                if(self.datas[0].close < self.takep[0]):
                     self.cancel(self.orders)
-                    self.pstops = min(self.ptakelevels, self.datas[0].close + self.atr[0] * self.params.atrsl)
-                    self.trails= self.buy(size=5, exectype=bt.Order.Stop, price=self.pstops)
+                    self.pstops = min(self.closer[0], self.datas[0].close + self.atr[0] * self.params.atrsl)
+                    self.trails = self.buy(size=self.position.size * 0.5, exectype=bt.Order.Stop, price=self.pstops)
 
 
 def runstrat():
@@ -172,7 +179,7 @@ def runstrat():
 
     final_results_list = []
     for run in optimized_runs:
-        c.plot()
+        # c.plot()
         for c in run:
             
             PnL = round(c.broker.get_value() - 10000,2)
